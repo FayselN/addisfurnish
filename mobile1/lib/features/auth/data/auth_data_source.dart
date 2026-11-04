@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/network/env.dart';
 import '../../../core/network/supabase_api.dart';
 import '../../../core/network/supabase_client.dart';
 
@@ -65,33 +67,44 @@ class AuthDataSource {
     return AppSupabase.client.auth.updateUser(UserAttributes(password: newPassword));
   }
 
-  // ── Google Sign-In (browser-based OAuth, same as mobile1) ─────────────
-  // Uses Supabase's `signInWithOAuth` to get the authorization URL, then
-  // opens it in the device browser. After the user authenticates, the browser
-  // redirects back to the app via the `addisfurnish://` deep link scheme.
-  // Supabase Flutter's `appLinks` config automatically captures the tokens
-  // from the redirect URL and establishes the session.
-
-  /// The custom URL scheme configured in AndroidManifest.xml and used by
-  /// Supabase to redirect back after OAuth.
-  static const _redirectScheme = 'addisfurnish';
-  static const _redirectTo = '$_redirectScheme://auth';
-
+  // ── Google Sign-In (native credential flow — no browser) ───────────────
+  // google_sign_in does the app-native account flow (no browser redirect, no
+  // addisfurnish:// deep link). The Android OAuth client in Google Cloud is
+  // matched through the app's package name + SHA-1 fingerprint; passing the
+  // Web client id as serverClientId makes the result carry an idToken whose
+  // audience Supabase accepts. signInWithIdToken then creates the session
+  // directly — Google's webhook-free, browser-free path.
   static Future<void> signInWithGoogle() async {
-    AppSupabase.client.auth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: _redirectTo,
-      authScreenLaunchMode: LaunchMode.externalApplication,
+    debugPrint('[Auth] native Google sign-in started');
+    final GoogleSignIn google = GoogleSignIn(
+      serverClientId: Env.googleWebClientId.isNotEmpty
+          ? Env.googleWebClientId
+          : null,
+      scopes: const <String>['email', 'profile'],
     );
-
-    // signInWithOAuth with LaunchMode.externalApplication opens the browser
-    // automatically. The session is captured by supabase_flutter's deep link
-    // handler when the browser redirects back to addisfurnish://auth.
-    //
-    // We don't need to manually parse the URL or set the session — 
-    // supabase_flutter handles it via the auth state change listener.
-
-    debugPrint('[Auth] Google OAuth flow initiated (browser redirect)');
+    try {
+      final account = await google.signIn();
+      if (account == null) {
+        debugPrint('[Auth] Google sign-in cancelled by user');
+        throw 'cancelled';
+      }
+      final googleAuth = await account.authentication;
+      final idToken = googleAuth.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw 'Google sign-in failed: no id token (check the Web client id '
+            'define and the app SHA-1 registered in Google Cloud)';
+      }
+      await AppSupabase.client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+      );
+      debugPrint('[Auth] Google id token exchanged, session established');
+    } finally {
+      // Release the granted scopes; keeps the account picker fresh next time.
+      try {
+        await google.disconnect();
+      } catch (_) {}
+    }
   }
 
   // ── Session / profile ─────────────────────────────────────────────────

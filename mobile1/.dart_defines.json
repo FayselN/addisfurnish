@@ -1,7 +1,7 @@
 {
-  "BASE_URL": "https://addisfurnish.vercel.app/api/v1",
+  "BASE_URL": "https://addisfurnish-coral.vercel.app/api/v1",
   "SUPABASE_URL": "https://bchojnitamkmnxvwqtdn.supabase.co",
   "SUPABASE_ANON_KEY": "sb_publishable_APWFN3BeRUBSTFYaRd89wA_VnKZjwBh",
-  "GOOGLE_WEB_CLIENT_ID": "820642569677-ct9d4a98k6m7sulv802k80vndai3qfmc.apps.googleusercontent.com",
+  "GOOGLE_WEB_CLIENT_ID": "219752318033-kqo48eml9rcql6j5ai2cpredbbi3ugdl.apps.googleusercontent.com",
   "TELEGRAM_BOT_USERNAME": "addishome_et_bot"
 }
