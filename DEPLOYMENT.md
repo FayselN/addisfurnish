@@ -15,7 +15,7 @@ for the public and testers. The repo is split into three parts:
 
 | Area | Status |
 |---|---|
-| Database | ✅ Live — project ref `ctgulhtaefzsdfemggty`; schema, RLS, buckets, demo data in place |
+| Database | ✅ Live — project ref `bchojnitamkmnxvwqtdn`; schema, RLS, buckets, demo data in place |
 | Edge functions | ⚠️ Exist (`send-push`, `telegram-bot`, `telegram-notify`) but **not deployed** |
 | Web app | ⚠️ Builds clean (Nitro); not deployed to your own domain yet |
 | Mobile app | ⚠️ Builds clean; **no EAS project yet** (no `projectId` → no production push tokens) |
@@ -60,7 +60,7 @@ git check-ignore web/.env mobile/.env && echo "ignored ✓"
 npm i -g supabase            # or: brew install supabase/tap/supabase
 supabase login               # opens browser; use the account that owns the project
 cd /home/hayredin/Documents/pro/addisfurnish
-supabase link --project-ref ctgulhtaefzsdfemggty
+supabase link --project-ref bchojnitamkmnxvwqtdn
 ```
 
 ### 1.2 Apply all migrations

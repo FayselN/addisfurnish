@@ -1,4 +1,4 @@
-project_id = "ctgulhtaefzsdfemggty"
+project_id = "bchojnitamkmnxvwqtdn"
 
 # Telegram's webhook POST carries no Authorization header, so Supabase's
 # default JWT check would 401 every update before the function runs.

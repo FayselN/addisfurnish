@@ -97,7 +97,7 @@ supabase functions deploy telegram-notify telegram-bot
 supabase db push
 
 curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
-  -d "url=https://ctgulhtaefzsdfemggty.supabase.co/functions/v1/telegram-bot" \
+  -d "url=https://bchojnitamkmnxvwqtdn.supabase.co/functions/v1/telegram-bot" \
   -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
   --data-urlencode 'allowed_updates=["message","callback_query"]'
 

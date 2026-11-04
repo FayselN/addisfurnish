@@ -13,7 +13,7 @@
 # nodemailer, which delivers reliably. See supabase/functions/send-mail/README.md.
 #
 # Usage:
-#   SUPABASE_ACCESS_TOKEN=sbp_xxx SUPABASE_PROJECT_REF=ctgulhtaefzsdfemggty \
+#   SUPABASE_ACCESS_TOKEN=sbp_xxx SUPABASE_PROJECT_REF=bchojnitamkmnxvwqtdn \
 #   BREVO_SMTP_USER=xxxxx@smtp-brevo.com BREVO_SMTP_KEY=xsmtpsib-... \
 #   ./setup-email.sh
 #
@@ -22,7 +22,7 @@
 # Required env:
 #   SUPABASE_ACCESS_TOKEN   Management API token (sbp_...), from
 #                           https://supabase.com/dashboard/account/tokens
-#   SUPABASE_PROJECT_REF    Project ref, e.g. ctgulhtaefzsdfemggty
+#   SUPABASE_PROJECT_REF    Project ref, e.g. bchojnitamkmnxvwqtdn
 #   BREVO_SMTP_USER         Brevo SMTP relay login (xxxxx@smtp-brevo.com)
 #   BREVO_SMTP_KEY          Brevo SMTP key (xsmtpsib-...)
 #

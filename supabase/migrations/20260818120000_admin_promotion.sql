@@ -147,10 +147,10 @@ BEGIN
 
   BEGIN
     PERFORM http_post(
-      url := 'https://ctgulhtaefzsdfemggty.supabase.co/functions/v1/send-mail',
+      url := (SELECT vault.decrypt_secret('SUPABASE_URL')) || '/functions/v1/send-mail',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer sb_publishable_jYgnSd0CtVUoVE1nYQ_AHg_WVPjGkGF'
+        'Authorization', 'Bearer ' || (SELECT vault.decrypt_secret('SUPABASE_PUBLISHABLE_KEY'))
       ),
       body := jsonb_build_object('email', jsonb_build_object(
         'to', _requester_email,
@@ -236,10 +236,10 @@ BEGIN
   IF _target_email IS NOT NULL THEN
     BEGIN
       PERFORM http_post(
-        url := 'https://ctgulhtaefzsdfemggty.supabase.co/functions/v1/send-mail',
+        url := (SELECT vault.decrypt_secret('SUPABASE_URL')) || '/functions/v1/send-mail',
         headers := jsonb_build_object(
           'Content-Type', 'application/json',
-          'Authorization', 'Bearer sb_publishable_jYgnSd0CtVUoVE1nYQ_AHg_WVPjGkGF'
+          'Authorization', 'Bearer ' || (SELECT vault.decrypt_secret('SUPABASE_PUBLISHABLE_KEY'))
         ),
         body := jsonb_build_object('email', jsonb_build_object(
           'to', _target_email,

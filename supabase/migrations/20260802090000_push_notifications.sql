@@ -42,10 +42,11 @@ REVOKE ALL ON FUNCTION public.claim_push_token(text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.claim_push_token(text, text) TO authenticated;
 
 -- ── Trigger: notifications insert → send-push edge function ──────────────
--- Uses the project's anon key as the bearer JWT (the standard Supabase
--- trigger → edge-function pattern; anon keys are public by design).
--- NOTE: the project URL + anon key below are baked in for this project's
--- instance; update them if the project is ever recreated.
+-- Uses the project's publishable key as the bearer JWT (the standard Supabase
+-- trigger → edge-function pattern; publishable keys are public by design).
+-- NOTE: the project URL and key are read from the Encrypted Vault
+-- (SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY secrets), so this works on any
+-- project — just make sure both Vault secrets exist.
 CREATE OR REPLACE FUNCTION public.push_on_notification()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -55,11 +56,11 @@ AS $$
 BEGIN
   BEGIN
     PERFORM supabase_functions.http_request(
-      'https://ssihdmhsptlbalidutqa.supabase.co/functions/v1/send-push',
+      (SELECT vault.decrypt_secret('SUPABASE_URL')) || '/functions/v1/send-push',
       'POST',
       jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer sb_publishable_oAgEydXLcxnLz8uQdNlS6Q_t8x7FAhC'
+        'Authorization', 'Bearer ' || (SELECT vault.decrypt_secret('SUPABASE_PUBLISHABLE_KEY'))
       ),
       jsonb_build_object(
         'notification_id', NEW.id,

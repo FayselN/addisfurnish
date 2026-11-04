@@ -1,7 +1,7 @@
 {
   "BASE_URL": "https://addisfurnish.vercel.app/api/v1",
-  "SUPABASE_URL": "https://ctgulhtaefzsdfemggty.supabase.co",
-  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0Z3VsaHRhZWZ6c2RmZW1nZ3R5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NDQyMjUsImV4cCI6MjEwMTMyMDIyNX0.RcomF7M_OvtA3M_IFaEqkgFIYB-i0oiUhTWa3vxd3sE",
+  "SUPABASE_URL": "https://bchojnitamkmnxvwqtdn.supabase.co",
+  "SUPABASE_ANON_KEY": "sb_publishable_APWFN3BeRUBSTFYaRd89wA_VnKZjwBh",
   "GOOGLE_WEB_CLIENT_ID": "820642569677-ct9d4a98k6m7sulv802k80vndai3qfmc.apps.googleusercontent.com",
-  "TELEGRAM_BOT_USERNAME": "addisfurnish_bot"
+  "TELEGRAM_BOT_USERNAME": "addishome_et_bot"
 }
