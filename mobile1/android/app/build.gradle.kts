@@ -4,6 +4,29 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Release signing — credentials live in android/keystore.properties (gitignored).
+// File format:
+//   storeFile=app/upload-keystore.jks
+//   storePassword=...
+//   keyAlias=upload
+//   keyPassword=...
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps: Map<String, String> =
+    if (keystorePropsFile.isFile) {
+        keystorePropsFile.readLines().mapNotNull { line ->
+            val idx = line.indexOf('=')
+            if (idx > 0) {
+                val key = line.substring(0, idx).trim()
+                val value = line.substring(idx + 1).trim()
+                if (key.isNotEmpty() && value.isNotEmpty()) key to value else null
+            } else {
+                null
+            }
+        }.toMap()
+    } else {
+        emptyMap()
+    }
+
 android {
     namespace = "com.addisfurnish.addisfurnish"
     compileSdk = flutter.compileSdkVersion
@@ -26,11 +49,26 @@ android {
         versionName = flutter.versionName
     }
 
+    if (keystoreProps.isNotEmpty()) {
+        signingConfigs {
+            create("release") {
+                this.storeFile = rootProject.file(keystoreProps["storeFile"]!!)
+                storePassword = keystoreProps["storePassword"]!!
+                keyAlias = keystoreProps["keyAlias"]!!
+                keyPassword = keystoreProps["keyPassword"]!!
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with your own upload keystore (android/keystore.properties).
+            // Falls back to debug signing only when the properties file is
+            // absent (fresh clones without the keystore).
+            signingConfig = if (keystorePropsFile.exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 }
