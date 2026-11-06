@@ -515,7 +515,11 @@ class _FilterSheet extends StatefulWidget {
 }
 
 class _FilterSheetState extends State<_FilterSheet> {
-  String? _category;
+  /// Selected category chain, narrowest last (slug chain: parent → … → leaf).
+  /// Filtering by any level matches its whole subtree server-side, but the
+  /// dynamic attribute controls always resolve against the deepest pick.
+  List<String> _catSlugPath = const [];
+  String get _selectedSlug => _catSlugPath.isEmpty ? '' : _catSlugPath.last;
   String? _condition;
   String? _city;
   String? _sort;
@@ -527,7 +531,7 @@ class _FilterSheetState extends State<_FilterSheet> {
   List<CategoryAttributeDef> _attrDefs = const [];
   final Map<String, String?> _attrSingle = {};
   final Map<String, Set<String>> _attrMulti = {};
-  final Map<String, bool> _attrBool = {};
+  final Map<String, bool?> _attrBool = {};
   final Map<String, TextEditingController> _attrText = {};
   final Map<String, TextEditingController> _attrRangeMin = {};
   final Map<String, TextEditingController> _attrRangeMax = {};
@@ -535,7 +539,7 @@ class _FilterSheetState extends State<_FilterSheet> {
   @override
   void initState() {
     super.initState();
-    _category = widget.filters.category;
+    _catSlugPath = _slugPath(widget.filters.category);
     _condition = widget.filters.condition;
     _city = widget.filters.city;
     _sort = widget.filters.sort;
@@ -562,13 +566,55 @@ class _FilterSheetState extends State<_FilterSheet> {
     super.dispose();
   }
 
+  /// Root → … → leaf slug chain for [slug]; empty for null or unknown slugs.
+  List<String> _slugPath(String? slug) {
+    final cats = widget.categories ?? const <Category>[];
+    if (slug == null) return const [];
+    Category? cur;
+    for (final c in cats) {
+      if (c.slug == slug) {
+        cur = c;
+        break;
+      }
+    }
+    if (cur == null) return [slug];
+    final path = <String>[cur.slug];
+    while (true) {
+      final parentId = cur!.parentId;
+      final parent = cats.where((c) => c.id == parentId).toList();
+      if (parentId == null || parent.isEmpty) break;
+      cur = parent.first;
+      path.insert(0, cur.slug);
+    }
+    return path;
+  }
+
+  /// Category id for the deepest selected slug.
   String? get _categoryId {
-    final slug = _category;
-    if (slug == null) return null;
+    final slug = _selectedSlug;
+    if (slug.isEmpty) return null;
     for (final c in widget.categories ?? const <Category>[]) {
       if (c.slug == slug) return c.id;
     }
     return null;
+  }
+
+  /// Categories shown in the chip row for chain position [level]: the roots
+  /// when [level] is 0, otherwise the children of the category selected one
+  /// level above.
+  List<Category> _catsAt(int level) {
+    final cats = widget.categories ?? const <Category>[];
+    String? parentId;
+    if (level > 0) {
+      final parentSlug = _catSlugPath[level - 1];
+      for (final c in cats) {
+        if (c.slug == parentSlug) {
+          parentId = c.id;
+          break;
+        }
+      }
+    }
+    return cats.where((c) => c.parentId == parentId).toList();
   }
 
   Future<void> _loadAttrDefs() async {
@@ -590,7 +636,7 @@ class _FilterSheetState extends State<_FilterSheet> {
         } else if (d.type == 'multi_select') {
           _attrMulti.putIfAbsent(d.attributeId, () => <String>{});
         } else if (d.type == 'boolean') {
-          _attrBool.putIfAbsent(d.attributeId, () => false);
+          _attrBool.putIfAbsent(d.attributeId, () => null);
         }
       }
       if (!mounted) return;
@@ -667,7 +713,10 @@ class _FilterSheetState extends State<_FilterSheet> {
           ];
           if (vals.isNotEmpty) out[def.slug] = vals;
         case 'boolean':
-          out[def.slug] = [_attrBool[id] ?? false];
+          // Unset (null) must not filter — defaulting to false would hide
+          // listings whose boolean attribute is true.
+          final v = _attrBool[id];
+          if (v != null) out[def.slug] = [v];
         case 'number' || 'range':
           final lo = double.tryParse(_attrRangeMin[id]?.text ?? '');
           final hi = double.tryParse(_attrRangeMax[id]?.text ?? '');
@@ -689,9 +738,6 @@ class _FilterSheetState extends State<_FilterSheet> {
     final state = AppState.instance;
     final minCtrl = TextEditingController(text: _min?.toStringAsFixed(0) ?? '');
     final maxCtrl = TextEditingController(text: _max?.toStringAsFixed(0) ?? '');
-    final parents = (widget.categories ?? const <Category>[])
-        .where((c) => c.parentId == null)
-        .toList();
 
     return Scaffold(
       appBar: AppBar(title: Text(state.t('browse.filters'))),
@@ -734,24 +780,33 @@ class _FilterSheetState extends State<_FilterSheet> {
           _label(state.t('browse.category')),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
               ChoiceChip(
                 label: Text(state.t('browse.allItems')),
-                selected: _category == null,
+                selected: _catSlugPath.isEmpty,
                 onSelected: (_) {
-                  setState(() => _category = null);
+                  setState(() => _catSlugPath = const []);
                   _loadAttrDefs();
                 },
               ),
-              for (final c in parents)
-                ChoiceChip(
-                  label: Text(c.name),
-                  selected: _category == c.slug,
-                  onSelected: (_) {
-                    setState(() => _category = c.slug);
-                    _loadAttrDefs();
-                  },
-                ),
+              // One chip row per level: pick a level to drill into its
+              // children; the attribute section follows the deepest pick.
+              for (int level = 0; level <= _catSlugPath.length; level++)
+                for (final c in _catsAt(level))
+                  ChoiceChip(
+                    label: Text(
+                      state.lang == 'am' && c.nameAm != null ? c.nameAm! : c.name,
+                    ),
+                    selected: level < _catSlugPath.length &&
+                        _catSlugPath[level] == c.slug,
+                    onSelected: (_) {
+                      setState(() {
+                        _catSlugPath = [..._catSlugPath.sublist(0, level), c.slug];
+                      });
+                      _loadAttrDefs();
+                    },
+                  ),
             ],
           ),
           const SizedBox(height: 20),
@@ -800,7 +855,7 @@ class _FilterSheetState extends State<_FilterSheet> {
           const SizedBox(height: 24),
           FilledButton(
             onPressed: () => Navigator.of(context).pop({
-              'category': _category,
+              'category': _catSlugPath.isEmpty ? null : _selectedSlug,
               'condition': _condition,
               'city': _city,
               'sort': _sort,
@@ -833,12 +888,21 @@ class _FilterSheetState extends State<_FilterSheet> {
 
     switch (def.type) {
       case 'boolean':
+        final v = _attrBool[id];
         return SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
           title: Text(label),
-          value: _attrBool[id] ?? false,
-          onChanged: (v) => setState(() => _attrBool[id] = v),
+          value: v ?? false,
+          secondary: v == null
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  tooltip: 'Any',
+                  onPressed: () => setState(() => _attrBool[id] = null),
+                ),
+          // First toggle goes true→false→(reset via the clear icon to any).
+          onChanged: (val) => setState(() => _attrBool[id] = val),
         );
       case 'single_select':
         return DropdownButtonFormField<String>(
@@ -847,6 +911,8 @@ class _FilterSheetState extends State<_FilterSheet> {
           decoration: InputDecoration(labelText: label),
           hint: Text(label),
           items: [
+            // Explicit "any" choice so a made selection can be cleared.
+            const DropdownMenuItem(value: '__any__', child: Text('Any')),
             for (final o in def.options)
               DropdownMenuItem(
                 value: o.id,
@@ -856,7 +922,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                 ),
               ),
           ],
-          onChanged: (v) => setState(() => _attrSingle[id] = v),
+          onChanged: (v) =>
+              setState(() => _attrSingle[id] = v == '__any__' ? null : v),
         );
       case 'multi_select':
         return Column(

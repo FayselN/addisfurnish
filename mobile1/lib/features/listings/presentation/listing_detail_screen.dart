@@ -15,6 +15,7 @@ import '../../../core/widgets/section_header.dart';
 import '../../../core/network/supabase_api.dart' show ListingFilters;
 import '../../favorites/domain/favorites_repository.dart';
 import '../../messages/domain/messages_repository.dart';
+import '../../sell/domain/listing_attributes.dart';
 import '../../sell/domain/sell_repository.dart';
 import '../domain/listing_query.dart';
 import '../domain/listings_repository.dart';
@@ -39,6 +40,10 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> with AppState
 
   Listing? _listing;
   List<Listing>? _similar;
+  /// Dynamic attribute rows for this listing (spec §8–§11): lazily loaded so
+  /// admin-configured attributes render without a release.
+  List<(CategoryAttributeDef, ListingAttributeValue)>? _attrRows;
+  bool _attrLoaded = false;
   Set<String> _favIds = {};
   Offer? _myOffer;
   int _page = 0;
@@ -79,10 +84,14 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> with AppState
       setState(() {
         _listing = listing;
         _loading = false;
+        // A newly loaded listing's attribute rows must be re-resolved.
+        _attrRows = null;
+        _attrLoaded = false;
       });
       if (listing != null) {
         _loadSimilar();
         _loadMyOffer();
+        _loadAttrRows();
       }
     } catch (e) {
       if (!mounted) return;
@@ -105,6 +114,121 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> with AppState
         _similar = similar.items.where((l) => l.id != listing.id).take(10).toList();
       });
     } catch (_) {}
+  }
+
+  /// Values + definitions for the dynamic attribute section; silently absent
+  /// when the listing has no category, no values, or definition fetch fails.
+  Future<void> _loadAttrRows() async {
+    final listing = _listing;
+    final categoryId = listing?.categoryId;
+    if (listing == null || categoryId == null || _attrLoaded) return;
+    _attrLoaded = true;
+    try {
+      final defs = await _sellRepo.fetchCategoryAttributes(categoryId);
+      final byId = {
+        for (final d in defs) d.attributeId: d,
+      };
+      final values = await _sellRepo.fetchListingAttributeValues(listing.id);
+      if (!mounted) return;
+      setState(() {
+        _attrRows = [
+          for (final v in values)
+            if (byId[v.attributeId] != null) (byId[v.attributeId]!, v),
+        ];
+      });
+    } catch (_) {
+      // Best-effort: detail page renders fine without the section.
+    }
+  }
+
+  /// One attribute as label → display value; when both fail to render as a
+  /// human string the row is skipped rather than showing raw ids.
+  (String, String)? _attrRowDisplay(AppState state, CategoryAttributeDef def,
+      ListingAttributeValue v) {
+    final lang = state.lang;
+    String? value;
+    if (v.optionId != null) {
+      for (final o in def.options) {
+        if (o.id == v.optionId) {
+          value = lang == 'am' && o.labelAm != null ? o.labelAm! : o.label;
+          break;
+        }
+      }
+    } else if (v.valueBoolean != null) {
+      value = v.valueBoolean! ? 'Yes' : 'No';
+    } else if (v.valueNumber != null) {
+      final n = v.valueNumber!;
+      value = n == n.roundToDouble()
+          ? n.toStringAsFixed(0)
+          : n.toStringAsFixed(1);
+    } else if (v.valueText != null && v.valueText!.isNotEmpty) {
+      value = v.valueText;
+    }
+    if (value == null || value.isEmpty) return null;
+    final label = lang == 'am' && def.nameAm != null ? def.nameAm! : def.name;
+    return (
+      def.unit == null ? label : '$label (${def.unit})',
+      value,
+    );
+  }
+
+  Widget _buildAttrSection(
+      BuildContext context, AppState state, ThemeData theme, Listing listing) {
+    if (listing.categoryId == null) return const SizedBox.shrink();
+    if (!_attrLoaded) _loadAttrRows();
+    final rows = _attrRows;
+    if (rows == null) return const SizedBox.shrink();
+    final display = [
+      for (final (def, v) in rows) _attrRowDisplay(state, def, v),
+    ].whereType<(String, String)>().toList();
+    if (display.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          state.lang == 'am' ? 'ዝርዝሮች' : 'Specifications',
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 14),
+          child: Column(
+            children: [
+              for (final (label, value) in display)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: Text(
+                          label,
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(color: theme.colorScheme.outline),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 7,
+                        child: Text(
+                          value,
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _loadFavorites() async {
@@ -641,6 +765,9 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> with AppState
 
               _featureGrid(state, theme, listing),
               const SizedBox(height: 20),
+
+              _buildAttrSection(context, state, theme, listing),
+              const SizedBox(height: 8),
 
               Text(state.t('listing.description'), style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),

@@ -94,8 +94,10 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
   bool _negotiable = true;
   bool _delivery = false;
   String? _condition = 'good';
-  String? _categoryId;
-  String? _rootCategoryId;
+  /// Selected category chain, narrowest last (root → … → leaf). Full-depth,
+  /// so dynamic attributes resolve against the most specific category.
+  List<String> _catPath = const [];
+  String? get _categoryId => _catPath.isEmpty ? null : _catPath.last;
   List<Category> _categories = const [];
   List<_SellImage> _images = const [];
   String? _discountDate;
@@ -118,6 +120,20 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
   final Map<String, bool> _attrBool = {};
 
   static const _conditions = ['like new', 'good', 'fair', 'poor'];
+
+  /// Bridge between the sticky condition chips and the Condition attribute
+  /// (required, single_select) in categories that configure one: the chips set
+  /// the corresponding attribute option so publishing doesn't fail with an
+  /// inconsistent pair, and picking the option updates the chips.
+  static const Map<String, String> _conditionToOption = {
+    'like new': 'like-new',
+    'good': 'good',
+    'fair': 'fair',
+    'poor': 'needs-repair',
+  };
+  static final Map<String, String> _optionToCondition = {
+    for (final e in _conditionToOption.entries) e.value: e.key,
+  };
 
   bool get _isEditMode => widget.editListingId != null;
 
@@ -153,7 +169,33 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
   }
 
   /// The most specific selected category — attributes resolve against it.
-  String? get _effectiveCategoryId => _categoryId ?? _rootCategoryId;
+  String? get _effectiveCategoryId => _categoryId;
+
+  /// Category-attribute definition for "Condition", if the selected category
+  /// configures one (matched by slug or name, select-type only).
+  CategoryAttributeDef? get _conditionAttrDef {
+    for (final d in _attrDefs) {
+      if (d.isSelect &&
+          (d.slug == 'condition' ||
+              d.name.toLowerCase().trim() == 'condition')) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  /// Root → … → leaf id chain for [leafId]; empty when unknown.
+  List<String> _ancestorPath(String? leafId, List<Category> cats) {
+    final byId = <String, Category>{for (final c in cats) c.id: c};
+    final path = <String>[];
+    var cur = leafId == null ? null : byId[leafId];
+    while (cur != null) {
+      path.insert(0, cur.id);
+      final parentId = cur.parentId;
+      cur = parentId == null ? null : byId[parentId];
+    }
+    return path;
+  }
 
   Future<void> _loadAttrDefs({bool prefill = false}) async {
     final id = _effectiveCategoryId;
@@ -254,6 +296,9 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
     if (id == null) return;
     setState(() => _loadingEdit = true);
     try {
+      // The category chips' path is built from _categories; make sure they
+      // are loaded ( initState() fires both loads without awaiting).
+      if (_categories.isEmpty) await _loadCategories();
       final item = await _repo.fetchListingForEdit(id);
       if (!mounted || item == null) return;
       setState(() {
@@ -280,12 +325,11 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
             : _location;
         _videoUrl = item.videoUrl;
         _videoExisting = item.videoUrl != null;
-        _categoryId = item.categoryId;
-        Category? cat;
-        for (final c in _categories) {
-          if (c.id == item.categoryId) cat = c;
-        }
-        _rootCategoryId = cat?.parentId ?? item.categoryId;
+        // Rebuild the category path by walking the parent chain, so the
+        // cascading picker shows every level of an existing listing.
+        _catPath = _categories.isEmpty
+            ? const []
+            : _ancestorPath(item.categoryId, _categories);
         _images = [
           for (final img in item.images)
             _SellImage(url: img.url, isExisting: true),
@@ -459,7 +503,7 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
           lon = c.lng;
         }
       }
-      final categoryId = _categoryId ?? _rootCategoryId;
+      final categoryId = _categoryId;
 
       if (_isEditMode && _editing) {
         final id = widget.editListingId!;
@@ -541,8 +585,7 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
     _subCity.clear();
     _deliveryFee.clear();
     _condition = 'good';
-    _categoryId = null;
-    _rootCategoryId = null;
+    _catPath = const [];
     _images = const [];
     _video = null;
     _videoUrl = null;
@@ -756,29 +799,34 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
 
                     const SizedBox(height: 8),
                     _label(state.t('sell.category')),
+                    // Full-depth cascading selection: one row of chips per
+                    // level of the category tree. Picking a level narrows the
+                    // next row to its children; attributes always resolve
+                    // against the deepest selection.
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        for (final c in _categories.where((c) => c.parentId == null))
-                          ChoiceChip(
-                            label: Text(c.name),
-                            selected: _rootCategoryId == c.id || (_categoryId != null && _categories.where((cc) => cc.id == _categoryId).any((cc) => cc.parentId == c.id)),
-                            onSelected: (_) {
-                              setState(() {
-                                _rootCategoryId = c.id;
-                                _categoryId = null;
-                              });
-                              _loadAttrDefs();
-                            },
-                          ),
-                        if (_rootCategoryId != null)
-                          for (final c in _categories.where((c) => c.parentId == _rootCategoryId))
+                        for (int level = 0; level <= _catPath.length; level++)
+                          for (final c in _categories.where(
+                            (c) => c.parentId ==
+                                (level == 0 ? null : _catPath[level - 1]),
+                          ))
                             ChoiceChip(
-                              label: Text(c.name),
-                              selected: _categoryId == c.id,
+                              label: Text(
+                                state.lang == 'am' && c.nameAm != null
+                                    ? c.nameAm!
+                                    : c.name,
+                              ),
+                              selected: level < _catPath.length &&
+                                  _catPath[level] == c.id,
                               onSelected: (_) {
-                                setState(() => _categoryId = c.id);
+                                setState(() {
+                                  _catPath = [
+                                    ..._catPath.sublist(0, level),
+                                    c.id,
+                                  ];
+                                });
                                 _loadAttrDefs();
                               },
                             ),
@@ -794,7 +842,20 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
                           ChoiceChip(
                             label: Text(cond),
                             selected: _condition == cond,
-                            onSelected: (_) => setState(() => _condition = cond),
+                            onSelected: (_) => setState(() {
+                              _condition = cond;
+                              // Keep the dynamic Condition attribute in step.
+                              final def = _conditionAttrDef;
+                              if (def != null) {
+                                final value = _conditionToOption[cond];
+                                for (final o in def.options) {
+                                  if (o.value == value) {
+                                    _attrSingle[def.attributeId] = o.id;
+                                    break;
+                                  }
+                                }
+                              }
+                            }),
                           ),
                       ],
                     ),
@@ -1105,7 +1166,19 @@ class _SellScreenState extends State<SellScreen> with AppStateMixin {
                 ),
               ),
           ],
-          onChanged: (v) => setState(() => _attrSingle[id] = v),
+          onChanged: (v) => setState(() {
+            _attrSingle[id] = v;
+            // Options → condition chips, when this is the Condition attribute.
+            if (def.attributeId == _conditionAttrDef?.attributeId && v != null) {
+              for (final o in def.options) {
+                if (o.id == v) {
+                  final chip = _optionToCondition[o.value];
+                  if (chip != null) _condition = chip;
+                  break;
+                }
+              }
+            }
+          }),
         );
       case 'multi_select':
         return Column(
