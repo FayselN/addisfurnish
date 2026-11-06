@@ -229,7 +229,14 @@ class SupabaseApi {
         'viewed' => q.order('view_count', ascending: false),
         _ => q.order('created_at', ascending: false),
       };
-      final data = await ordered.limit(f.limit ?? 48);
+      // Order the embedded gallery images by their stored position — without
+      // this PostgREST returns them in arbitrary order and the "first" image
+      // (the card cover) can be any of the 2-4 gallery slots. Safe to apply
+      // here because all of the type-narrowing inFilter() calls above have
+      // already run on the filter builder.
+      final data = await ordered
+          .order('position', referencedTable: 'listing_images')
+          .limit(f.limit ?? 48);
       return data
           .map((r) => Listing.fromJson(_resolveImageUrls(r)))
           .toList(growable: false);
@@ -244,6 +251,7 @@ class SupabaseApi {
           .from('listings')
           .select(_listingSelect)
           .eq('id', id)
+          .order('position', referencedTable: 'listing_images')
           .maybeSingle();
       return data == null ? null : Listing.fromJson(_resolveImageUrls(data));
     } catch (e) {
@@ -1330,7 +1338,8 @@ class SupabaseApi {
           .from('listings')
           .select(_listingSelect)
           .eq('seller_id', sellerId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .order('position', referencedTable: 'listing_images');
       return data
           .map((r) => Listing.fromJson(_resolveImageUrls(r)))
           .toList(growable: false);
@@ -1345,6 +1354,7 @@ class SupabaseApi {
           .from('listings')
           .select(_listingSelect)
           .eq('id', id)
+          .order('position', referencedTable: 'listing_images')
           .maybeSingle();
       return data == null ? null : Listing.fromJson(_resolveImageUrls(data));
     } catch (e) {

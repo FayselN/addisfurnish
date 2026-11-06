@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -83,7 +84,28 @@ class AuthDataSource {
       scopes: const <String>['email', 'profile'],
     );
     try {
-      final account = await google.signIn();
+      final GoogleSignInAccount? account;
+      try {
+        account = await google.signIn();
+      } on PlatformException catch (e) {
+        debugPrint('[Auth] Google platform error: code=${e.code} '
+            'message=${e.message} details=${e.details}');
+        // DEVELOPER_ERROR surfaces as code 10 (and in Play-services logs as
+        // "cd.d:10"): the installed app's package name + signing SHA-1 are not
+        // registered on any Android OAuth client in the Google Cloud project
+        // that owns [serverClientId]. Nothing the user can fix in-app —
+        // surface development guidance instead of a dead "sign_in_failed".
+        if (e.code == '10' || e.code == 'sign_in_failed' ||
+            e.code == 'DEVELOPER_ERROR') {
+          throw 'Google sign-in is not configured for this build.\n'
+              'Register the Android OAuth client in Google Cloud with '
+              'package com.addisfurnish.addisfurnish and signing SHA-1 '
+              '19:AB:54:80:A7:F4:98:F1:58:B1:DC:EB:EB:79:BA:FD:C7:06:D3:36, '
+              'then rebuild.';
+        }
+        // Everything else (network, api-not-available) keeps its own message.
+        throw 'Google sign-in failed (${e.code}): ${e.message ?? 'unknown'}';
+      }
       if (account == null) {
         debugPrint('[Auth] Google sign-in cancelled by user');
         throw 'cancelled';
