@@ -52,6 +52,15 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() {});
   }
 
+  /// Closes the fullscreen auth dialog once a session exists. MainTabs
+  /// listens to AppState and has already rebuilt behind this route, but the
+  /// modal stays stacked on top until it is popped — without this the user
+  /// appears "stuck" on the sign-in page and only phone-back dismisses it.
+  void _closeAfterAuth() {
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   void dispose() {
     _emailController.removeListener(_onFieldChanged);
@@ -108,7 +117,8 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() {
           _busy = false;
         });
-        // Navigator pop will be handled by AppState listening to session.
+        // Auto-session (email confirmation off): leave the auth screen.
+        _closeAfterAuth();
       }
     } else {
       final res = await _auth.signInWithEmail(email, password);
@@ -122,6 +132,7 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() {
           _busy = false;
         });
+        _closeAfterAuth();
       }
     }
   }
@@ -183,6 +194,7 @@ class _AuthScreenState extends State<AuthScreen> {
       setState(() {
         _busy = false;
       });
+      _closeAfterAuth();
     }
   }
 
